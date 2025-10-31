@@ -1,0 +1,26 @@
+#################################################################
+# Global configuration defaults.
+#################################################################
+
+nameOverride: ""
+nsPrefix: ""
+
+config:
+  prometheus:
+    url:
+      port: 9090
+    retention: 15d
+    scrapeInterval: 30s
+    evaluationInterval: 30s
+
+service:
+  name: ""
+  type: ClusterIP
+
+probe:
+  blackbox:
+    enabled: true
+    module: http_2xx
+    targets:
+      - https://example.com
+      - https://google.com

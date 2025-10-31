@@ -1,0 +1,26 @@
+{{- if .Values.probe.blackbox.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: {{ include "common.fullname" . }}-blackbox-probe
+  namespace: {{ include "common.namespace" . }}
+  labels:
+    app: {{ include "common.name" . }}
+    release: {{ .Release.Name }}
+spec:
+  interval: {{ .Values.config.prometheus.scrapeInterval }}
+  module: {{ .Values.probe.blackbox.module }}
+  
+  prober:
+    url: {{ include "common.servicename" . }}-blackbox:9115
+  
+  targets:
+    staticConfig:
+      static:
+        {{- range .Values.probe.blackbox.targets }}
+        - {{ . }}
+        {{- end }}
+      
+      labels:
+        probe: blackbox
+{{- end }}
