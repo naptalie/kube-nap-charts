@@ -1,0 +1,101 @@
+#################################################################
+# Global configuration defaults.
+#################################################################
+
+nameOverride: ""
+nsPrefix: ""
+
+#################################################################
+# Prometheus Configuration
+#################################################################
+prometheus:
+  retention: "30d"
+  scrapeInterval: 30s
+  evaluationInterval: 30s
+  port: "9090"
+
+  service:
+    type: ClusterIP
+    nodePort: null
+
+#################################################################
+# Probe Configuration
+#################################################################
+probe:
+  blackbox:
+    enabled: true
+    module: http_2xx
+    targets:
+      - https://example.com
+      - https://google.com
+
+#################################################################
+# Subchart: Blackbox Exporter
+#################################################################
+blackboxExporter:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+  config:
+    modules:
+      http_2xx:
+        prober: http
+        timeout: 5s
+        http:
+          method: GET
+          preferred_ip_protocol: "ip4"
+          follow_redirects: true
+          valid_status_codes: []
+      tcp_connect:
+        prober: tcp
+        timeout: 5s
+
+#################################################################
+# Subchart: Grafana Alloy
+#################################################################
+alloy:
+  enabled: true
+
+  alloy:
+    # Stability level
+    stabilityLevel: "generally-available"
+
+  # Custom labels to add to all metrics (referenced in alloy-config.yaml template)
+  customLabels:
+    cluster: "default"
+    environment: "production"
+    additional: {}
+      # team: "platform"
+      # region: "us-west-2"
+
+  # Remote write endpoint port
+  remoteWritePort: 9009
+
+#################################################################
+# Health API Configuration
+#################################################################
+healthApi:
+  enabled: true
+  replicaCount: 2
+
+  image:
+    repository: your-registry/health-api
+    tag: latest
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    port: 8080
+    nodePort: null
+
+  resources:
+    limits:
+      cpu: 200m
+      memory: 128Mi
+    requests:
+      cpu: 100m
+      memory: 64Mi
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
