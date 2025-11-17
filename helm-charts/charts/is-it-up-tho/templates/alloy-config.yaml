@@ -1,0 +1,90 @@
+{{- if .Values.alloy.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "common.fullname" . }}-alloy-config
+  namespace: {{ include "common.namespace" . }}
+  labels:
+    app.kubernetes.io/name: alloy
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app: {{ include "common.name" . }}
+    release: {{ .Release.Name }}
+data:
+  config.alloy: |
+    /********************************************
+     * Grafana Alloy Configuration
+     *
+     * This config receives metrics from Prometheus,
+     * adds custom labels, and writes them back
+     ********************************************/
+
+    // Receive metrics from Prometheus via remote write
+    prometheus.receive_http "from_prometheus" {
+      http {
+        listen_address = "0.0.0.0"
+        listen_port    = {{ .Values.alloy.remoteWritePort }}
+      }
+
+      forward_to = [prometheus.relabel.add_custom_labels.receiver]
+    }
+
+    // Add custom labels to all incoming metrics
+    prometheus.relabel "add_custom_labels" {
+      forward_to = [prometheus.remote_write.back_to_prometheus.receiver]
+
+      // Add cluster label
+      rule {
+        target_label = "cluster"
+        replacement  = "{{ .Values.alloy.customLabels.cluster }}"
+      }
+
+      // Add environment label
+      rule {
+        target_label = "environment"
+        replacement  = "{{ .Values.alloy.customLabels.environment }}"
+      }
+
+      // Add source label
+      rule {
+        target_label = "source"
+        replacement  = "alloy"
+      }
+
+      {{- range $key, $value := .Values.alloy.customLabels.additional }}
+      // Add custom label: {{ $key }}
+      rule {
+        target_label = "{{ $key }}"
+        replacement  = "{{ $value }}"
+      }
+      {{- end }}
+    }
+
+    // Write enriched metrics back to Prometheus
+    prometheus.remote_write "back_to_prometheus" {
+      endpoint {
+        url = "http://{{ include "common.fullname" . }}-prometheus.{{ include "common.namespace" . }}.svc.cluster.local:9090/api/v1/write"
+
+        queue_config {
+          capacity             = 10000
+          max_shards           = 50
+          min_shards           = 1
+          max_samples_per_send = 5000
+          batch_send_deadline  = "5s"
+          min_backoff          = "30ms"
+          max_backoff          = "5s"
+        }
+
+        metadata_config {
+          send          = true
+          send_interval = "1m"
+        }
+      }
+    }
+
+    // Logging configuration
+    logging {
+      level  = "info"
+      format = "logfmt"
+    }
+{{- end }}
