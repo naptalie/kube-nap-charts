@@ -1,0 +1,129 @@
+Thank you for installing {{ .Chart.Name }}!
+
+Your release is named {{ .Release.Name }}.
+
+To learn more about the release, try:
+
+  $ helm status {{ .Release.Name }} -n {{ .Release.Namespace }}
+  $ helm get all {{ .Release.Name }} -n {{ .Release.Namespace }}
+
+================================================================================
+                    is-it-up-tho Health Monitoring
+================================================================================
+
+Components installed:
+  ✓ Prometheus Instance (via Prometheus Operator)
+  ✓ Blackbox Exporter
+{{- if .Values.alloy.enabled }}
+  ✓ Grafana Alloy (with custom label enrichment)
+{{- end }}
+{{- if .Values.healthApi.enabled }}
+  ✓ Health API (Go REST API)
+{{- end }}
+
+Health Check Targets:
+{{- if .Values.probe.blackbox.enabled }}
+{{- range .Values.probe.blackbox.targets }}
+  • {{ . }}
+{{- end }}
+{{- else }}
+  (No targets configured)
+{{- end }}
+
+================================================================================
+                         Getting Started
+================================================================================
+
+1. Check the status of your components:
+
+   kubectl get pods -n {{ .Release.Namespace }}
+   kubectl get prometheus -n {{ .Release.Namespace }}
+   kubectl get probe -n {{ .Release.Namespace }}
+
+{{- if .Values.healthApi.enabled }}
+
+2. Access the Health API:
+
+   kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "common.fullname" . }}-health-api 8080:8080
+
+   Then visit: http://localhost:8080/api/v1/health
+
+   Available endpoints:
+     • GET /api/v1/health - Get all health checks
+     • GET /api/v1/health/{target} - Get specific target status
+     • GET /api/v1/metrics/{metric} - Query Prometheus metrics
+     • GET /healthz - Liveness probe
+
+{{- end }}
+
+3. Access Prometheus:
+
+   kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "common.fullname" . }}-prometheus 9090:9090
+
+   Then visit: http://localhost:9090
+
+   Useful queries:
+     • probe_success - Current status of all probes
+     • probe_success == 0 - Failed probes
+     • probe_http_duration_seconds - HTTP probe duration
+{{- if .Values.alloy.enabled }}
+     • probe_success{cluster="{{ .Values.alloy.customLabels.cluster }}"} - Probes with custom labels
+{{- end }}
+
+{{- if .Values.alloy.enabled }}
+
+4. Grafana Alloy Configuration:
+
+   Custom labels added to all metrics:
+     • cluster: {{ .Values.alloy.customLabels.cluster }}
+     • environment: {{ .Values.alloy.customLabels.environment }}
+     • source: alloy
+{{- range $key, $value := .Values.alloy.customLabels.additional }}
+     • {{ $key }}: {{ $value }}
+{{- end }}
+
+{{- end }}
+
+================================================================================
+                         Configuration
+================================================================================
+
+Your current configuration:
+  • Namespace: {{ .Release.Namespace }}
+  • Prometheus Retention: {{ .Values.prometheus.retention }}
+  • Scrape Interval: {{ .Values.prometheus.scrapeInterval }}
+{{- if .Values.healthApi.enabled }}
+  • Health API Replicas: {{ .Values.healthApi.replicaCount }}
+  • Health API Image: {{ .Values.healthApi.image.repository }}:{{ .Values.healthApi.image.tag }}
+{{- end }}
+
+To modify configuration:
+  helm upgrade {{ .Release.Name }} . -n {{ .Release.Namespace }} -f values.yaml
+
+================================================================================
+                         Troubleshooting
+================================================================================
+
+View logs:
+  # Prometheus
+  kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/name=prometheus
+
+{{- if .Values.healthApi.enabled }}
+  # Health API
+  kubectl logs -n {{ .Release.Namespace }} -l component=health-api
+{{- end }}
+
+{{- if .Values.alloy.enabled }}
+  # Alloy
+  kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/name=alloy
+{{- end }}
+
+Check resources:
+  kubectl get all -n {{ .Release.Namespace }}
+  kubectl describe prometheus {{ include "common.name" . }} -n {{ .Release.Namespace }}
+
+For more information:
+  • Documentation: https://github.com/your-repo/is-it-up-tho
+  • Issues: https://github.com/your-repo/is-it-up-tho/issues
+
+================================================================================
