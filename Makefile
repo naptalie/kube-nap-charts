@@ -1,4 +1,4 @@
-.PHONY: help build-api push-api helm-deps helm-install helm-upgrade helm-uninstall test-api port-forward-api port-forward-prometheus clean kind-create kind-delete kind-load-image kind-setup kind-deploy check-kind install-prometheus-operator
+.PHONY: help install-prereqs build-api push-api helm-deps helm-install helm-upgrade helm-uninstall test-api port-forward-api port-forward-prometheus port-forward-alloy clean kind-create kind-delete kind-load-image kind-setup kind-deploy kind-rebuild kind-verify check-kind install-prometheus-operator logs-api logs-prometheus logs-alloy status deploy redeploy
 
 # Variables
 REGISTRY ?= localhost:5001
@@ -15,13 +15,18 @@ help:
 	@echo "                 is-it-up-tho Makefile Targets"
 	@echo "====================================================================="
 	@echo ""
+	@echo "Prerequisites:"
+	@echo "  install-prereqs        - Install KIND, kubectl, helm (auto-detect OS)"
+	@echo "  check-kind             - Check if all tools are installed"
+	@echo ""
 	@echo "KIND Cluster Management:"
-	@echo "  check-kind             - Check if KIND is installed"
 	@echo "  kind-create            - Create a KIND cluster with local registry"
 	@echo "  kind-delete            - Delete the KIND cluster"
 	@echo "  kind-load-image        - Load Health API image into KIND"
 	@echo "  kind-setup             - Complete KIND setup (create + operators)"
 	@echo "  kind-deploy            - Full deployment to KIND cluster"
+	@echo "  kind-rebuild           - Delete and rebuild cluster with deployment"
+	@echo "  kind-verify            - Verify KIND deployment"
 	@echo ""
 	@echo "Docker Image Management:"
 	@echo "  build-api              - Build the Health API Docker image"
@@ -57,6 +62,7 @@ help:
 	@echo "  KIND_CLUSTER_NAME=$(KIND_CLUSTER_NAME)"
 	@echo ""
 	@echo "Quick Start with KIND:"
+	@echo "  make install-prereqs   # Install required tools"
 	@echo "  make kind-setup        # Create cluster and install operators"
 	@echo "  make kind-deploy       # Deploy the full stack"
 	@echo "  make status            # Check everything is running"
@@ -181,20 +187,80 @@ port-forward-alloy:
 	kubectl port-forward -n $(NAMESPACE) svc/$(RELEASE_NAME)-alloy 12345:12345
 
 #################################################################
+# Prerequisites Installation
+#################################################################
+
+# Install all prerequisites (KIND, kubectl, helm, docker)
+install-prereqs:
+	@echo "====================================================================="
+	@echo "Installing Prerequisites"
+	@echo "====================================================================="
+	@echo ""
+	@if [ -f ./install-prerequisites.sh ]; then \
+		chmod +x ./install-prerequisites.sh; \
+		./install-prerequisites.sh; \
+	else \
+		echo "ERROR: install-prerequisites.sh not found"; \
+		echo "Please ensure install-prerequisites.sh is in the project root"; \
+		exit 1; \
+	fi
+
+#################################################################
 # KIND Cluster Management
 #################################################################
 
 # Check if KIND is installed
 check-kind:
-	@echo "Checking for KIND installation..."
-	@which kind > /dev/null || (echo "ERROR: KIND is not installed. Install from https://kind.sigs.k8s.io/docs/user/quick-start/#installation" && exit 1)
-	@echo "✓ KIND is installed: $$(kind version)"
-	@which kubectl > /dev/null || (echo "ERROR: kubectl is not installed" && exit 1)
-	@echo "✓ kubectl is installed: $$(kubectl version --client --short 2>/dev/null || kubectl version --client)"
-	@which helm > /dev/null || (echo "ERROR: helm is not installed" && exit 1)
-	@echo "✓ helm is installed: $$(helm version --short)"
-	@which docker > /dev/null || (echo "ERROR: docker is not installed" && exit 1)
-	@echo "✓ docker is installed: $$(docker version --format '{{.Client.Version}}')"
+	@echo "Checking for required tools..."
+	@echo ""
+	@MISSING=0; \
+	if ! which kind > /dev/null 2>&1; then \
+		echo "✗ KIND is not installed"; \
+		MISSING=1; \
+	else \
+		echo "✓ KIND is installed: $$(kind version)"; \
+	fi; \
+	if ! which kubectl > /dev/null 2>&1; then \
+		echo "✗ kubectl is not installed"; \
+		MISSING=1; \
+	else \
+		echo "✓ kubectl is installed: $$(kubectl version --client --short 2>/dev/null || kubectl version --client | head -1)"; \
+	fi; \
+	if ! which helm > /dev/null 2>&1; then \
+		echo "✗ Helm is not installed"; \
+		MISSING=1; \
+	else \
+		echo "✓ Helm is installed: $$(helm version --short)"; \
+	fi; \
+	if ! which docker > /dev/null 2>&1; then \
+		echo "✗ Docker is not installed"; \
+		MISSING=1; \
+	else \
+		if docker info > /dev/null 2>&1; then \
+			echo "✓ Docker is installed and running: $$(docker version --format '{{.Client.Version}}')"; \
+		else \
+			echo "⚠ Docker is installed but not running"; \
+			MISSING=1; \
+		fi; \
+	fi; \
+	echo ""; \
+	if [ $$MISSING -eq 1 ]; then \
+		echo "=====================================================================";\
+		echo "Some prerequisites are missing!"; \
+		echo "=====================================================================" ;\
+		echo ""; \
+		echo "Run the following command to install missing tools:"; \
+		echo "  make install-prereqs"; \
+		echo ""; \
+		echo "Or install manually:"; \
+		echo "  macOS:   brew install kind kubectl helm docker"; \
+		echo "  Linux:   See PREREQUISITES.md for installation instructions"; \
+		echo "  Windows: choco install kind kubernetes-cli kubernetes-helm docker-desktop"; \
+		echo ""; \
+		exit 1; \
+	else \
+		echo "✓ All prerequisites are installed!"; \
+	fi
 
 # Create KIND cluster with local registry
 kind-create: check-kind
