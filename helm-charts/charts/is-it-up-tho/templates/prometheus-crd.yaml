@@ -1,0 +1,44 @@
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  name: {{ include "common.name" . }}
+  namespace: {{ include "common.namespace" . }}
+  labels:
+    app: {{ include "common.name" . }}
+    release: {{ .Release.Name }}
+spec:
+  replicas: 1
+  retention: {{ .Values.prometheus.retention }}
+  serviceAccountName: {{ include "common.fullname" . }}
+  
+  serviceMonitorSelector:
+    matchLabels:
+      release: {{ .Release.Name }}
+  
+  {{- if .Values.probe.blackbox.enabled }}
+  probeSelector:
+    matchLabels:
+      release: {{ .Release.Name }}
+  {{- end }}
+  
+  resources:
+    requests:
+      memory: 400Mi
+  
+  configMaps:
+    - {{ include "common.fullname" . }}-config
+
+  portName: {{ include "common.prometheusPort" . }}
+
+  {{- if .Values.alloy.enabled }}
+  remoteWrite:
+    - url: http://{{ .Release.Name }}-alloy.{{ include "common.namespace" . }}.svc.cluster.local:{{ .Values.alloy.remoteWritePort }}/api/v1/push
+      queueConfig:
+        capacity: 10000
+        maxShards: 50
+        minShards: 1
+        maxSamplesPerSend: 5000
+        batchSendDeadline: 5s
+        minBackoff: 30ms
+        maxBackoff: 5s
+  {{- end }}
