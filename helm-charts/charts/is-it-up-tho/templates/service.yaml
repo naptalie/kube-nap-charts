@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "common.fullname" . }}-prometheus
+  namespace: {{ include "common.namespace" . }}
+  labels:
+    app: {{ include "common.name" . }}
+    release: {{ .Release.Name }}
+    component: prometheus
+spec:
+  type: {{ .Values.prometheus.service.type }}
+  ports:
+    - name: web
+      port: 9090
+      targetPort: web
+      protocol: TCP
+      {{- if and (eq .Values.prometheus.service.type "NodePort") .Values.prometheus.service.nodePort }}
+      nodePort: {{ .Values.prometheus.service.nodePort }}
+      {{- end }}
+  selector:
+    app.kubernetes.io/name: prometheus
+    prometheus: {{ include "common.name" . }}
+---
+{{- if .Values.healthApi.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "common.fullname" . }}-health-api
+  namespace: {{ include "common.namespace" . }}
+  labels:
+    app: {{ include "common.name" . }}
+    release: {{ .Release.Name }}
+    component: health-api
+spec:
+  type: {{ .Values.healthApi.service.type }}
+  ports:
+    - name: http
+      port: {{ .Values.healthApi.service.port }}
+      targetPort: http
+      protocol: TCP
+      {{- if and (eq .Values.healthApi.service.type "NodePort") .Values.healthApi.service.nodePort }}
+      nodePort: {{ .Values.healthApi.service.nodePort }}
+      {{- end }}
+  selector:
+    app: {{ include "common.name" . }}
+    component: health-api
+{{- end }}
