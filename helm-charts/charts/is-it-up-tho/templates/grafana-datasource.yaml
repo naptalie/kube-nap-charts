@@ -1,0 +1,27 @@
+{{- if .Values.grafana.enabled }}
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDatasource
+metadata:
+  name: {{ include "common.fullname" . }}-prometheus-datasource
+  namespace: {{ include "common.namespace" . }}
+  labels:
+    app: {{ include "common.name" . }}
+    release: {{ .Release.Name }}
+    component: grafana
+spec:
+  instanceSelector:
+    matchLabels:
+      app: {{ include "common.name" . }}
+      component: grafana
+
+  datasource:
+    name: {{ .Values.grafana.datasource.name }}
+    type: {{ .Values.grafana.datasource.type }}
+    access: {{ .Values.grafana.datasource.access }}
+    url: http://{{ include "common.fullname" . }}-prometheus.{{ include "common.namespace" . }}.svc.cluster.local:{{ .Values.prometheus.port }}
+    isDefault: {{ .Values.grafana.datasource.isDefault }}
+    jsonData:
+      timeInterval: {{ .Values.prometheus.scrapeInterval }}
+      httpMethod: POST
+    editable: true
+{{- end }}

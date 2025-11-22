@@ -1,0 +1,105 @@
+{{- if and .Values.grafana.enabled .Values.grafana.alerts.enabled .Values.probe.blackbox.enabled }}
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaAlertRuleGroup
+metadata:
+  name: {{ include "common.fullname" . }}-probe-alerts
+  namespace: {{ include "common.namespace" . }}
+  labels:
+    app: {{ include "common.name" . }}
+    release: {{ .Release.Name }}
+    component: grafana
+spec:
+  instanceSelector:
+    matchLabels:
+      app: {{ include "common.name" . }}
+      component: grafana
+
+  folderUID: "probe-alerts"
+  interval: {{ .Values.prometheus.evaluationInterval }}
+  name: probe-alerts
+  rules:
+{{- range .Values.probe.blackbox.targets }}
+{{- $targetName := . | replace "https://" "" | replace "http://" "" | replace "." "-" | replace "/" "-" | replace ":" "-" | trunc 63 | trimSuffix "-" }}
+    - uid: {{ $targetName }}-down
+      title: "{{ . }} is down"
+      condition: C
+      data:
+        - refId: A
+          queryType: ""
+          relativeTimeRange:
+            from: 300
+            to: 0
+          datasourceUid: {{ $.Values.grafana.datasource.name }}
+          model:
+            expr: 'probe_success{instance="{{ . }}"}'
+            intervalMs: 1000
+            maxDataPoints: 43200
+            refId: A
+        - refId: B
+          queryType: ""
+          relativeTimeRange:
+            from: 300
+            to: 0
+          datasourceUid: __expr__
+          model:
+            conditions:
+              - evaluator:
+                  params:
+                    - 0
+                    - 0
+                  type: gt
+                operator:
+                  type: and
+                query:
+                  params: []
+                type: query
+            datasource:
+              name: Expression
+              type: __expr__
+              uid: __expr__
+            expression: A
+            intervalMs: 1000
+            maxDataPoints: 43200
+            reducer: last
+            refId: B
+            type: reduce
+        - refId: C
+          queryType: ""
+          relativeTimeRange:
+            from: 300
+            to: 0
+          datasourceUid: __expr__
+          model:
+            conditions:
+              - evaluator:
+                  params:
+                    - 1
+                    - 0
+                  type: lt
+                operator:
+                  type: and
+                query:
+                  params:
+                    - C
+                type: query
+            datasource:
+              name: Expression
+              type: __expr__
+              uid: __expr__
+            expression: B
+            intervalMs: 1000
+            maxDataPoints: 43200
+            refId: C
+            type: threshold
+      noDataState: NoData
+      execErrState: Alerting
+      for: 5m
+      annotations:
+        summary: "Probe target {{ . }} is down or unreachable"
+        description: "The probe_success metric for {{ . }} has been 0 for more than 5 minutes, indicating the target is down or unreachable."
+      labels:
+        severity: critical
+        probe: blackbox
+        target: {{ . }}
+{{- end }}
+{{- end }}

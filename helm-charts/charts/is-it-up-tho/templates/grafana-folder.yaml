@@ -1,0 +1,19 @@
+{{- if and .Values.grafana.enabled .Values.grafana.alerts.enabled }}
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaFolder
+metadata:
+  name: {{ include "common.fullname" . }}-probe-alerts-folder
+  namespace: {{ include "common.namespace" . }}
+  labels:
+    app: {{ include "common.name" . }}
+    release: {{ .Release.Name }}
+    component: grafana
+spec:
+  instanceSelector:
+    matchLabels:
+      app: {{ include "common.name" . }}
+      component: grafana
+
+  uid: "probe-alerts"
+  title: "Probe Alerts"
+{{- end }}

@@ -60,7 +60,20 @@ alloy:
     # Stability level
     stabilityLevel: "generally-available"
 
-  # Custom labels to add to all metrics (referenced in alloy-config.yaml template)
+    # Use external ConfigMap (created by our template)
+    configMap:
+      create: false
+      name: "RELEASE-NAME-PLACEHOLDER-is-it-up-tho-alloy-config"
+      key: "config.alloy"
+
+    # Expose the remote write port
+    extraPorts:
+      - name: "remote-write"
+        port: 9009
+        targetPort: 9009
+        protocol: "TCP"
+
+  # Custom labels to add to all metrics (referenced in alloy config)
   customLabels:
     cluster: "default"
     environment: "production"
@@ -99,3 +112,38 @@ healthApi:
   nodeSelector: {}
   tolerations: []
   affinity: {}
+
+#################################################################
+# Subchart: Grafana Operator
+#################################################################
+grafanaOperator:
+  enabled: true
+
+#################################################################
+# Grafana Configuration
+#################################################################
+grafana:
+  enabled: true
+
+  # Grafana instance configuration
+  instance:
+    name: is-it-up-tho
+    adminUser: admin
+    adminPassword: admin
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 3000
+
+  # Prometheus datasource configuration
+  datasource:
+    name: prometheus
+    type: prometheus
+    access: proxy
+    isDefault: true
+
+  # Alert configuration
+  alerts:
+    enabled: true
+    # Alerts will be generated automatically from probe targets

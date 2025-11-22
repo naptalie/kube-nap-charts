@@ -10,7 +10,11 @@ spec:
   replicas: 1
   retention: {{ .Values.prometheus.retention }}
   serviceAccountName: {{ include "common.fullname" . }}
-  
+
+  {{- if .Values.alloy.enabled }}
+  enableRemoteWriteReceiver: true
+  {{- end }}
+
   serviceMonitorSelector:
     matchLabels:
       release: {{ .Release.Name }}
@@ -28,11 +32,11 @@ spec:
   configMaps:
     - {{ include "common.fullname" . }}-config
 
-  portName: {{ include "common.prometheusPort" . }}
+  portName: web
 
   {{- if .Values.alloy.enabled }}
   remoteWrite:
-    - url: http://{{ .Release.Name }}-alloy.{{ include "common.namespace" . }}.svc.cluster.local:{{ .Values.alloy.remoteWritePort }}/api/v1/push
+    - url: http://{{ .Release.Name }}-alloy.{{ include "common.namespace" . }}.svc.cluster.local:{{ .Values.alloy.remoteWritePort }}/api/v1/metrics/write
       queueConfig:
         capacity: 10000
         maxShards: 50

@@ -1,0 +1,33 @@
+{{- if .Values.grafana.enabled }}
+apiVersion: grafana.integreatly.org/v1beta1
+kind: Grafana
+metadata:
+  name: {{ include "common.fullname" . }}-grafana
+  namespace: {{ include "common.namespace" . }}
+  labels:
+    app: {{ include "common.name" . }}
+    release: {{ .Release.Name }}
+    component: grafana
+spec:
+  config:
+    log:
+      mode: "console"
+    auth:
+      disable_login_form: "false"
+    security:
+      admin_user: {{ .Values.grafana.instance.adminUser }}
+      admin_password: {{ .Values.grafana.instance.adminPassword }}
+
+  service:
+    metadata:
+      labels:
+        app: {{ include "common.name" . }}
+        component: grafana
+    spec:
+      type: {{ .Values.grafana.service.type }}
+      ports:
+        - name: http
+          port: {{ .Values.grafana.service.port }}
+          protocol: TCP
+          targetPort: 3000
+{{- end }}
