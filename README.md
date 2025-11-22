@@ -481,6 +481,25 @@ kubectl exec -n monitoring prometheus-is-it-up-tho-0 -c prometheus -- \
 # Should show metrics with cluster, environment, and source labels
 ```
 
+## Technical Decisions
+
+1. **Prometheus Operator CRD**: Chose CRD over standalone Prometheus for better Kubernetes integration and declarative configuration
+2. **Grafana Operator**: Enables declarative Grafana configuration with automatic datasource and alert provisioning
+3. **Grafana Alert-Driven Health API**: Health status derived from alert states provides a single source of truth for system health
+4. **Go for API**: Lightweight, fast, with excellent Prometheus and HTTP client libraries
+5. **Remote Write Loop**: Prometheus → Alloy → Prometheus allows metric enrichment without data loss
+6. **Helm Dependencies**: Using official charts for Alloy, Blackbox Exporter, and Grafana Operator ensures compatibility and maintainability
+7. **REST API**: Simple HTTP interface for maximum compatibility with different clients
+
+## Performance Considerations
+
+- Health API configured with resource limits (200m CPU, 128Mi memory)
+- Prometheus retention set to 30 days (configurable)
+- 2 replicas of Health API for high availability
+- Efficient querying via Prometheus and Grafana client libraries
+- Remote write queue configuration optimized for throughput
+- Alert evaluation interval of 30s balances responsiveness with resource usage
+
 ## Support
 
 - Documentation: See `/docs` directory
