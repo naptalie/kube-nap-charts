@@ -38,15 +38,18 @@ help:
 	@echo "  helm-upgrade           - Upgrade the Helm release"
 	@echo "  helm-uninstall         - Uninstall the Helm release"
 	@echo "  install-prometheus-operator - Install Prometheus Operator"
+	@echo "  install-grafana-operator - Install Grafana Operator"
 	@echo ""
 	@echo "Testing and Monitoring:"
 	@echo "  test-api               - Test the Health API endpoints"
 	@echo "  port-forward-api       - Port forward to Health API (8080)"
 	@echo "  port-forward-prometheus- Port forward to Prometheus (9090)"
+	@echo "  port-forward-grafana   - Port forward to Grafana (3000)"
 	@echo "  port-forward-alloy     - Port forward to Alloy (12345)"
 	@echo "  status                 - Check status of all resources"
 	@echo "  logs-api               - View Health API logs"
 	@echo "  logs-prometheus        - View Prometheus logs"
+	@echo "  logs-grafana           - View Grafana logs"
 	@echo "  logs-alloy             - View Alloy logs"
 	@echo ""
 	@echo "Utilities:"
@@ -163,6 +166,9 @@ status:
 	@echo "Probes:"
 	kubectl get probe -n $(NAMESPACE)
 	@echo ""
+	@echo "Grafana Resources:"
+	kubectl get grafana,grafanadatasource,grafanaalertrulegroup -n $(NAMESPACE) 2>/dev/null || echo "No Grafana resources found"
+	@echo ""
 	@echo "Services:"
 	kubectl get svc -n $(NAMESPACE)
 
@@ -185,6 +191,17 @@ port-forward-alloy:
 	@echo "Port forwarding to Alloy on port 12345..."
 	@echo "Access at: http://localhost:12345/metrics"
 	kubectl port-forward -n $(NAMESPACE) svc/$(RELEASE_NAME)-alloy 12345:12345
+
+# Port forward to Grafana
+port-forward-grafana:
+	@echo "Port forwarding to Grafana on port 3000..."
+	@echo "Access at: http://localhost:3000"
+	@echo "Login with admin/admin (default credentials)"
+	kubectl port-forward -n $(NAMESPACE) svc/$(RELEASE_NAME)-is-it-up-tho-grafana-service 3000:3000
+
+# View Grafana logs
+logs-grafana:
+	kubectl logs -n $(NAMESPACE) -l app.kubernetes.io/name=grafana --tail=100 -f
 
 #################################################################
 # Prerequisites Installation
@@ -315,8 +332,32 @@ install-prometheus-operator:
 	@kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=kube-prometheus-stack-operator -n monitoring --timeout=300s
 	@echo "✓ Prometheus Operator is ready"
 
+# Install Grafana Operator
+install-grafana-operator:
+	@echo "Installing Grafana Operator..."
+	@if kubectl get namespace grafana-operator-system > /dev/null 2>&1; then \
+		echo "Namespace 'grafana-operator-system' already exists"; \
+	else \
+		kubectl create namespace grafana-operator-system; \
+	fi
+	@if kubectl get deployment -n grafana-operator-system grafana-operator-controller-manager > /dev/null 2>&1; then \
+		echo "Grafana Operator already installed"; \
+	else \
+		helm repo add grafana https://grafana.github.io/helm-charts || true; \
+		helm repo update; \
+		helm install grafana-operator grafana/grafana-operator \
+			--namespace grafana-operator-system \
+			--create-namespace \
+			--wait --timeout=5m; \
+		echo "✓ Grafana Operator installed"; \
+	fi
+	@echo ""
+	@echo "Waiting for Grafana Operator to be ready..."
+	@kubectl wait --for=condition=available deployment/grafana-operator-controller-manager -n grafana-operator-system --timeout=300s || true
+	@echo "✓ Grafana Operator is ready"
+
 # Complete KIND setup (create cluster + install operators)
-kind-setup: kind-create install-prometheus-operator
+kind-setup: kind-create install-prometheus-operator install-grafana-operator
 	@echo ""
 	@echo "====================================================================="
 	@echo "✓ KIND cluster setup complete!"
@@ -354,6 +395,7 @@ kind-deploy: kind-load-image helm-deps
 	@echo "Access services:"
 	@echo "  make port-forward-api         # Health API at http://localhost:8080"
 	@echo "  make port-forward-prometheus  # Prometheus at http://localhost:9090"
+	@echo "  make port-forward-grafana     # Grafana at http://localhost:3000"
 	@echo "  make port-forward-alloy       # Alloy at http://localhost:12345"
 	@echo ""
 	@echo "Test the setup:"
