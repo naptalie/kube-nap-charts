@@ -30,16 +30,15 @@ spec:
               containerPort: 8080
               protocol: TCP
           env:
+            - name: PROMETHEUS_URL
+              value: "http://{{ include "common.fullname" . }}-prometheus.{{ include "common.namespace" . }}.svc.cluster.local:{{ .Values.prometheus.port }}"
             {{- if .Values.grafana.enabled }}
             - name: GRAFANA_URL
               value: "http://{{ include "common.fullname" . }}-grafana-service.{{ include "common.namespace" . }}.svc.cluster.local:{{ .Values.grafana.service.port }}"
             - name: GRAFANA_USER
-              value: {{ .Values.grafana.instance.adminUser }}
+              value: {{ .Values.grafana.instance.adminUser | quote }}
             - name: GRAFANA_PASSWORD
-              value: {{ .Values.grafana.instance.adminPassword }}
-            {{- else }}
-            - name: PROMETHEUS_URL
-              value: "http://{{ include "common.fullname" . }}-prometheus.{{ include "common.namespace" . }}.svc.cluster.local:9090"
+              value: {{ .Values.grafana.instance.adminPassword | quote }}
             {{- end }}
             - name: PORT
               value: "8080"

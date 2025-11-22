@@ -16,6 +16,7 @@ spec:
 
   datasource:
     name: {{ .Values.grafana.datasource.name }}
+    uid: {{ .Values.grafana.datasource.uid }}
     type: {{ .Values.grafana.datasource.type }}
     access: {{ .Values.grafana.datasource.access }}
     url: http://{{ include "common.fullname" . }}-prometheus.{{ include "common.namespace" . }}.svc.cluster.local:{{ .Values.prometheus.port }}

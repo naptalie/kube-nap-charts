@@ -29,7 +29,7 @@ spec:
           relativeTimeRange:
             from: 300
             to: 0
-          datasourceUid: {{ $.Values.grafana.datasource.name }}
+          datasourceUid: {{ $.Values.grafana.datasource.uid }}
           model:
             expr: 'probe_success{instance="{{ . }}"}'
             intervalMs: 1000

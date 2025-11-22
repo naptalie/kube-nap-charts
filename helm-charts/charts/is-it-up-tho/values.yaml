@@ -139,6 +139,7 @@ grafana:
   # Prometheus datasource configuration
   datasource:
     name: prometheus
+    uid: prometheus-ds  # UID for alert rules to reference
     type: prometheus
     access: proxy
     isDefault: true
