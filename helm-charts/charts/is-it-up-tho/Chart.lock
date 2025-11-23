@@ -8,5 +8,8 @@ dependencies:
 - name: grafana-operator
   repository: https://grafana.github.io/helm-charts
   version: v5.16.0
-digest: sha256:f8bbab0853c9fe4a2e9ac2c6078e226a0ce3373a9209f9ae0bc416df2554032a
-generated: "2025-11-21T19:59:22.623785-05:00"
+- name: mimir-distributed
+  repository: https://grafana.github.io/helm-charts
+  version: 5.5.0
+digest: sha256:73775b53fa108bb8ca013f6c4cdc638c1fb01b40117f7f90ad277ce758583301
+generated: "2025-11-23T14:31:04.033203-05:00"

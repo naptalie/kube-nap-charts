@@ -19,3 +19,8 @@ dependencies:
     version: "5.16.0"
     repository: https://grafana.github.io/helm-charts
     condition: grafanaOperator.enabled
+
+  - name: mimir-distributed
+    version: "5.5.0"
+    repository: https://grafana.github.io/helm-charts
+    condition: mimir.enabled

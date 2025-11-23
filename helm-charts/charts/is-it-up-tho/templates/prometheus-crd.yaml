@@ -11,7 +11,7 @@ spec:
   retention: {{ .Values.prometheus.retention }}
   serviceAccountName: {{ include "common.fullname" . }}
 
-  {{- if .Values.alloy.enabled }}
+  {{- if and .Values.alloy.enabled (not .Values.mimir.enabled) }}
   enableRemoteWriteReceiver: true
   {{- end }}
 

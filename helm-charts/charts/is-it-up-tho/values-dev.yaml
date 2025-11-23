@@ -1,0 +1,181 @@
+#################################################################
+# Development Environment Configuration
+# Moderate resources for dev/staging clusters
+#################################################################
+
+# Override mimir configuration for development
+mimir-distributed:
+  # Development Mimir setup
+  ingester:
+    replicas: 2
+    persistentVolume:
+      enabled: true
+      size: 5Gi
+    resources:
+      limits:
+        cpu: 300m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 256Mi
+    zoneAwareReplication:
+      enabled: false
+
+  distributor:
+    replicas: 2
+    resources:
+      limits:
+        cpu: 150m
+        memory: 128Mi
+      requests:
+        cpu: 50m
+        memory: 64Mi
+
+  querier:
+    replicas: 2
+    resources:
+      limits:
+        cpu: 300m
+        memory: 384Mi
+      requests:
+        cpu: 100m
+        memory: 192Mi
+
+  query_frontend:
+    replicas: 2
+    resources:
+      limits:
+        cpu: 150m
+        memory: 128Mi
+      requests:
+        cpu: 50m
+        memory: 64Mi
+
+  store_gateway:
+    replicas: 2
+    persistentVolume:
+      enabled: true
+      size: 5Gi
+    resources:
+      limits:
+        cpu: 150m
+        memory: 384Mi
+      requests:
+        cpu: 50m
+        memory: 192Mi
+    zoneAwareReplication:
+      enabled: false
+
+  compactor:
+    replicas: 1
+    persistentVolume:
+      enabled: true
+      size: 5Gi
+    resources:
+      limits:
+        cpu: 150m
+        memory: 384Mi
+      requests:
+        cpu: 50m
+        memory: 192Mi
+
+  ruler:
+    replicas: 2
+    resources:
+      limits:
+        cpu: 150m
+        memory: 256Mi
+      requests:
+        cpu: 50m
+        memory: 128Mi
+
+  alertmanager:
+    replicas: 2
+    persistentVolume:
+      enabled: true
+      size: 2Gi
+    resources:
+      limits:
+        cpu: 100m
+        memory: 256Mi
+      requests:
+        cpu: 50m
+        memory: 128Mi
+    zoneAwareReplication:
+      enabled: false
+
+  query_scheduler:
+    replicas: 2
+    resources:
+      limits:
+        cpu: 100m
+        memory: 128Mi
+      requests:
+        cpu: 50m
+        memory: 64Mi
+
+  overrides_exporter:
+    replicas: 1
+    resources:
+      limits:
+        cpu: 100m
+        memory: 128Mi
+      requests:
+        cpu: 50m
+        memory: 64Mi
+
+  nginx:
+    replicas: 2
+    resources:
+      limits:
+        cpu: 100m
+        memory: 128Mi
+      requests:
+        cpu: 50m
+        memory: 64Mi
+
+  # MinIO for dev object storage
+  minio:
+    enabled: true
+    replicas: 1
+    persistence:
+      size: 10Gi
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+  # Mimir configuration for dev
+  mimir:
+    structuredConfig:
+      # Accept out-of-order samples
+      limits:
+        out_of_order_time_window: 10m
+        max_global_series_per_user: 100000
+        max_global_series_per_metric: 15000
+        ingestion_rate: 10000
+        ingestion_burst_size: 20000
+
+# Health API for dev
+healthApi:
+  replicaCount: 2
+  resources:
+    limits:
+      cpu: 200m
+      memory: 128Mi
+    requests:
+      cpu: 100m
+      memory: 64Mi
+
+# Prometheus retention for dev
+prometheus:
+  retention: "15d"
+
+# Custom labels for dev environment
+alloy:
+  customLabels:
+    cluster: "dev-cluster"
+    environment: "development"

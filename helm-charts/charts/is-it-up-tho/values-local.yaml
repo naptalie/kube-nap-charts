@@ -1,0 +1,190 @@
+#################################################################
+# Local/Kind Development Environment Configuration
+# Minimal resource requests for kind clusters
+#################################################################
+
+# Override alloy configmap name (must match release name)
+alloy:
+  alloy:
+    configMap:
+      name: "my-healthchecks-is-it-up-tho-alloy-config"
+
+# Override mimir configuration for local development
+mimir-distributed:
+  # Minimal Mimir setup for local/kind clusters
+  ingester:
+    replicas: 1
+    persistentVolume:
+      enabled: true
+      size: 1Gi
+    resources:
+      limits:
+        cpu: 100m
+        memory: 256Mi
+      requests:
+        cpu: 25m
+        memory: 128Mi
+    zoneAwareReplication:
+      enabled: false
+
+  distributor:
+    replicas: 1
+    resources:
+      limits:
+        cpu: 50m
+        memory: 64Mi
+      requests:
+        cpu: 10m
+        memory: 32Mi
+
+  querier:
+    replicas: 1
+    resources:
+      limits:
+        cpu: 100m
+        memory: 128Mi
+      requests:
+        cpu: 25m
+        memory: 64Mi
+
+  query_frontend:
+    replicas: 1
+    resources:
+      limits:
+        cpu: 50m
+        memory: 64Mi
+      requests:
+        cpu: 10m
+        memory: 32Mi
+
+  store_gateway:
+    replicas: 1
+    persistentVolume:
+      enabled: true
+      size: 1Gi
+    resources:
+      limits:
+        cpu: 50m
+        memory: 128Mi
+      requests:
+        cpu: 10m
+        memory: 64Mi
+    zoneAwareReplication:
+      enabled: false
+
+  compactor:
+    replicas: 1
+    persistentVolume:
+      enabled: true
+      size: 1Gi
+    resources:
+      limits:
+        cpu: 50m
+        memory: 128Mi
+      requests:
+        cpu: 10m
+        memory: 64Mi
+
+  ruler:
+    replicas: 1
+    resources:
+      limits:
+        cpu: 50m
+        memory: 128Mi
+      requests:
+        cpu: 10m
+        memory: 64Mi
+
+  alertmanager:
+    replicas: 1
+    persistentVolume:
+      enabled: true
+      size: 1Gi
+    resources:
+      limits:
+        cpu: 50m
+        memory: 128Mi
+      requests:
+        cpu: 10m
+        memory: 64Mi
+    zoneAwareReplication:
+      enabled: false
+
+  query_scheduler:
+    replicas: 1
+    resources:
+      limits:
+        cpu: 50m
+        memory: 64Mi
+      requests:
+        cpu: 10m
+        memory: 32Mi
+
+  overrides_exporter:
+    replicas: 1
+    resources:
+      limits:
+        cpu: 50m
+        memory: 64Mi
+      requests:
+        cpu: 10m
+        memory: 32Mi
+
+  nginx:
+    replicas: 1
+    resources:
+      limits:
+        cpu: 50m
+        memory: 64Mi
+      requests:
+        cpu: 10m
+        memory: 32Mi
+
+  # MinIO for local object storage
+  minio:
+    enabled: true
+    replicas: 1
+    persistence:
+      size: 2Gi
+    resources:
+      limits:
+        cpu: 200m
+        memory: 512Mi
+      requests:
+        cpu: 50m
+        memory: 256Mi
+
+  # Mimir configuration optimized for local dev
+  mimir:
+    structuredConfig:
+      # Single replica configuration
+      ingester:
+        ring:
+          replication_factor: 1
+
+      store_gateway:
+        sharding_ring:
+          replication_factor: 1
+
+      # Accept out-of-order samples
+      limits:
+        out_of_order_time_window: 10m
+        max_global_series_per_user: 50000
+        max_global_series_per_metric: 10000
+        ingestion_rate: 5000
+        ingestion_burst_size: 10000
+
+# Reduce health API resources for local
+healthApi:
+  replicaCount: 1
+  resources:
+    limits:
+      cpu: 100m
+      memory: 64Mi
+    requests:
+      cpu: 25m
+      memory: 32Mi
+
+# Reduce Prometheus resources for local
+prometheus:
+  retention: "7d"

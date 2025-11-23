@@ -1,0 +1,209 @@
+#################################################################
+# Production Environment Configuration
+# Full resources for production deployments
+#################################################################
+
+# Override mimir configuration for production
+mimir-distributed:
+  # Production Mimir setup with HA
+  ingester:
+    replicas: 3
+    persistentVolume:
+      enabled: true
+      size: 50Gi
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+      requests:
+        cpu: 500m
+        memory: 1Gi
+    zoneAwareReplication:
+      enabled: true
+
+  distributor:
+    replicas: 3
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 250m
+        memory: 256Mi
+
+  querier:
+    replicas: 3
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+      requests:
+        cpu: 500m
+        memory: 512Mi
+
+  query_frontend:
+    replicas: 3
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 250m
+        memory: 256Mi
+
+  store_gateway:
+    replicas: 3
+    persistentVolume:
+      enabled: true
+      size: 50Gi
+    resources:
+      limits:
+        cpu: 500m
+        memory: 1Gi
+      requests:
+        cpu: 250m
+        memory: 512Mi
+    zoneAwareReplication:
+      enabled: true
+
+  compactor:
+    replicas: 1
+    persistentVolume:
+      enabled: true
+      size: 50Gi
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+      requests:
+        cpu: 500m
+        memory: 1Gi
+
+  ruler:
+    replicas: 3
+    resources:
+      limits:
+        cpu: 500m
+        memory: 1Gi
+      requests:
+        cpu: 250m
+        memory: 512Mi
+
+  alertmanager:
+    replicas: 3
+    persistentVolume:
+      enabled: true
+      size: 10Gi
+    resources:
+      limits:
+        cpu: 200m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 256Mi
+    zoneAwareReplication:
+      enabled: true
+
+  query_scheduler:
+    replicas: 2
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+  overrides_exporter:
+    replicas: 1
+    resources:
+      limits:
+        cpu: 100m
+        memory: 128Mi
+      requests:
+        cpu: 50m
+        memory: 64Mi
+
+  nginx:
+    replicas: 3
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+  # For production, consider using external object storage
+  # like S3, GCS, or Azure Blob Storage instead of MinIO
+  minio:
+    enabled: true
+    replicas: 4
+    persistence:
+      size: 100Gi
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+      requests:
+        cpu: 500m
+        memory: 1Gi
+
+  # Mimir configuration for production
+  mimir:
+    structuredConfig:
+      # Accept out-of-order samples
+      limits:
+        out_of_order_time_window: 10m
+        max_global_series_per_user: 1000000
+        max_global_series_per_metric: 50000
+        ingestion_rate: 50000
+        ingestion_burst_size: 100000
+
+      # Production storage configuration
+      # NOTE: For production, replace MinIO with cloud object storage:
+      # blocks_storage:
+      #   backend: s3
+      #   s3:
+      #     endpoint: s3.amazonaws.com
+      #     bucket_name: my-mimir-blocks
+      #     access_key_id: ${AWS_ACCESS_KEY_ID}
+      #     secret_access_key: ${AWS_SECRET_ACCESS_KEY}
+
+# Health API for production
+healthApi:
+  replicaCount: 3
+  resources:
+    limits:
+      cpu: 500m
+      memory: 256Mi
+    requests:
+      cpu: 250m
+      memory: 128Mi
+
+# Prometheus retention for production
+prometheus:
+  retention: "90d"
+  scrapeInterval: 15s
+  evaluationInterval: 15s
+
+# Custom labels for production environment
+alloy:
+  customLabels:
+    cluster: "prod-cluster"
+    environment: "production"
+
+# Production probe targets (update these)
+probe:
+  blackbox:
+    enabled: true
+    module: http_2xx
+    targets:
+      - https://api.example.com
+      - https://app.example.com
+      - https://www.example.com
+
+# Grafana configuration for production
+grafana:
+  instance:
+    adminPassword: "CHANGE_ME_IN_PRODUCTION"  # Use secrets management in production

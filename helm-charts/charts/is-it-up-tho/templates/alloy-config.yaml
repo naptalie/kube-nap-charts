@@ -31,7 +31,11 @@ data:
 
     // Add custom labels to all incoming metrics
     prometheus.relabel "add_custom_labels" {
+      {{- if .Values.mimir.enabled }}
+      forward_to = [prometheus.remote_write.to_mimir.receiver]
+      {{- else }}
       forward_to = [prometheus.remote_write.back_to_prometheus.receiver]
+      {{- end }}
 
       // Add cluster label
       rule {
@@ -60,6 +64,33 @@ data:
       {{- end }}
     }
 
+    {{- if .Values.mimir.enabled }}
+    // Write enriched metrics to Mimir (handles out-of-order samples)
+    prometheus.remote_write "to_mimir" {
+      endpoint {
+        url = "http://{{ .Release.Name }}-mimir-distributor.{{ include "common.namespace" . }}.svc.cluster.local:8080/api/v1/push"
+
+        headers = {
+          "X-Scope-OrgID" = "1",
+        }
+
+        queue_config {
+          capacity             = 10000
+          max_shards           = 50
+          min_shards           = 1
+          max_samples_per_send = 5000
+          batch_send_deadline  = "5s"
+          min_backoff          = "30ms"
+          max_backoff          = "5s"
+        }
+
+        metadata_config {
+          send          = true
+          send_interval = "1m"
+        }
+      }
+    }
+    {{- else }}
     // Write enriched metrics back to Prometheus
     prometheus.remote_write "back_to_prometheus" {
       endpoint {
@@ -81,6 +112,7 @@ data:
         }
       }
     }
+    {{- end }}
 
     // Logging configuration
     logging {

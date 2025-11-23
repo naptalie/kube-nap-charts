@@ -61,9 +61,11 @@ alloy:
     stabilityLevel: "generally-available"
 
     # Use external ConfigMap (created by our template)
+    # Note: The configmap name must match the one created in alloy-config.yaml template
+    # Format: <release-name>-is-it-up-tho-alloy-config
     configMap:
       create: false
-      name: "RELEASE-NAME-PLACEHOLDER-is-it-up-tho-alloy-config"
+      name: null  # This gets overridden by the parent chart
       key: "config.alloy"
 
     # Expose the remote write port
@@ -114,6 +116,140 @@ healthApi:
   affinity: {}
 
 #################################################################
+# Subchart: Grafana Mimir
+#################################################################
+mimir:
+  enabled: true
+
+mimir-distributed:
+  # Minimal Mimir setup for health metrics
+  # This is a development/small-scale configuration
+
+  # Use minimal replicas for small deployments
+  ingester:
+    replicas: 1
+    persistentVolume:
+      enabled: true
+      size: 2Gi
+    resources:
+      limits:
+        cpu: 200m
+        memory: 512Mi
+      requests:
+        cpu: 50m
+        memory: 256Mi
+    zoneAwareReplication:
+      enabled: false
+
+  distributor:
+    replicas: 1
+    resources:
+      limits:
+        cpu: 100m
+        memory: 128Mi
+      requests:
+        cpu: 25m
+        memory: 64Mi
+
+  querier:
+    replicas: 1
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+      requests:
+        cpu: 50m
+        memory: 128Mi
+
+  query_frontend:
+    replicas: 1
+    resources:
+      limits:
+        cpu: 100m
+        memory: 128Mi
+      requests:
+        cpu: 25m
+        memory: 64Mi
+
+  store_gateway:
+    replicas: 1
+    persistentVolume:
+      enabled: true
+      size: 2Gi
+    resources:
+      limits:
+        cpu: 100m
+        memory: 256Mi
+      requests:
+        cpu: 25m
+        memory: 128Mi
+    zoneAwareReplication:
+      enabled: false
+
+  compactor:
+    replicas: 1
+    persistentVolume:
+      enabled: true
+      size: 2Gi
+    resources:
+      limits:
+        cpu: 100m
+        memory: 256Mi
+      requests:
+        cpu: 25m
+        memory: 128Mi
+
+  # Use MinIO for object storage (included in chart)
+  minio:
+    enabled: true
+    replicas: 1
+    persistence:
+      size: 20Gi
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+  # Mimir configuration
+  mimir:
+    structuredConfig:
+      # Accept out-of-order samples
+      limits:
+        out_of_order_time_window: 10m
+        max_global_series_per_user: 150000
+        max_global_series_per_metric: 20000
+        ingestion_rate: 10000
+        ingestion_burst_size: 20000
+
+      # Storage configuration
+      blocks_storage:
+        backend: s3
+        s3:
+          endpoint: '{{ .Release.Name }}-minio.{{ .Release.Namespace }}.svc.cluster.local:9000'
+          bucket_name: mimir-blocks
+          access_key_id: mimir
+          secret_access_key: supersecret
+          insecure: true
+
+      ruler_storage:
+        backend: s3
+        s3:
+          endpoint: '{{ .Release.Name }}-minio.{{ .Release.Namespace }}.svc.cluster.local:9000'
+          bucket_name: mimir-ruler
+          access_key_id: mimir
+          secret_access_key: supersecret
+          insecure: true
+
+      alertmanager_storage:
+        backend: s3
+        s3:
+          endpoint: '{{ .Release.Name }}-minio.{{ .Release.Namespace }}.svc.cluster.local:9000'
+          bucket_name: mimir-alertmanager
+          access_key_id: mimir
+          secret_access_key: supersecret
+          insecure: true
+
+#################################################################
 # Subchart: Grafana Operator
 #################################################################
 grafanaOperator:
@@ -136,15 +272,9 @@ grafana:
     type: ClusterIP
     port: 3000
 
-  # Prometheus datasource configuration
-  datasource:
-    name: prometheus
-    uid: prometheus-ds  # UID for alert rules to reference
-    type: prometheus
-    access: proxy
-    isDefault: true
-
   # Alert configuration
   alerts:
     enabled: true
     # Alerts will be generated automatically from probe targets
+    # When mimir.enabled=true, alerts will use mimir-ds UID
+    # When mimir.enabled=false, alerts will use prometheus-ds UID
