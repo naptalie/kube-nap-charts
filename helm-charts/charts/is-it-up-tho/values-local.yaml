@@ -7,8 +7,7 @@
 mimir:
   enabled: false
 
-# Override alloy configmap name (must match the ConfigMap created by alloy-config.yaml template)
-# Format: <release-name>-<chart-name>-alloy-config
+# Enable Alloy for custom telemetry from Health API
 alloy:
   enabled: true
   customLabels:

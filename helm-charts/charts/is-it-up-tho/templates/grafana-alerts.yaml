@@ -92,7 +92,7 @@ spec:
             refId: C
             type: threshold
       noDataState: NoData
-      execErrState: Alerting
+      execErrState: OK
       for: 5m
       annotations:
         summary: "Probe target {{ . }} is down or unreachable"
