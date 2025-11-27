@@ -71,7 +71,7 @@ make kind-setup && make kind-deploy
 
 ## Architecture
 
-### With Mimir (Default - Handles Out-of-Order Samples)
+### Production (With Mimir - Handles Out-of-Order Samples)
 
 ```
 External Targets          Kubernetes Cluster
@@ -131,7 +131,9 @@ Clients ─────────────────┼─►│  Health 
                          ──────────────────────────────────────────────────────
 ```
 
-### Without Mimir (Alternative - Federation Loop)
+### Local Development (Without Mimir - Lightweight)
+
+**Optimized for KIND/local clusters with minimal resource footprint**
 
 ```
 External Targets          Kubernetes Cluster
@@ -139,46 +141,52 @@ External Targets          Kubernetes Cluster
                          │
 https://example.com ◄────┤  ┌─────────────────┐
 https://google.com  ◄────┼──│ Blackbox        │
-https://api.com     ◄────┤  │ Exporter        │
+                         │  │ Exporter        │
                          │  └────────┬────────┘
                          │           │
                          │           ▼ scrape
                          │  ┌──────────────────────────┐
-                         │  │   Prometheus             │◄──┐
-                         │  │   (Operator CRD)         │   │
-                         │  │   + Remote Write Receiver│   │
-                         │  └──────┬───────────────────┘   │
-                         │         │                        │
-                         │         │ remote_write           │
-                         │         │ /api/v1/metrics/write  │
-                         │         ▼                        │
-                         │  ┌──────────────────────────┐   │
-                         │  │  Grafana Alloy           │   │
-                         │  │  Federation Layer        │   │
-                         │  │  + Custom Labels:        │   │
-                         │  │    • cluster             │   │
-                         │  │    • environment         │   │
-                         │  │    • source=alloy        │   │
-                         │  └──────┬───────────────────┘   │
-                         │         │                        │
-                         │         └─ remote_write ─────────┘
-                         │            /api/v1/write
-                         │
-                         │  ┌──────────────────────────┐
+                         │  │   Prometheus             │◄───────┐
+                         │  │   (Standalone)           │        │
+                         │  │                          │        │
+                         │  │ - Local storage only     │        │
+                         │  │ - 7d retention           │        │
+                         │  │ - RemoteWrite: OFF       │        │
+                         │  │ - RemoteWrite RX: ON     │        │
+                         │  └──────────────────────────┘        │
+                         │                                       │
+                         │  ┌──────────────────────────┐        │
+Health API ──────────────┼─►│  Grafana Alloy           │        │
+(Custom Telemetry)      │  │  • Port 9009             │        │
+                         │  │  • Adds labels:          │────────┘
+                         │  │    - cluster             │ remote_write
+                         │  │    - environment         │ /api/v1/write
+                         │  │    - source              │
+                         │  └──────────────────────────┘
+                         │           ▲
+                         │           │ query datasource
+                         │  ┌────────┴─────────────────┐
                          │  │   Grafana                │
                          │  │   (Operator CRD)         │
                          │  │   • Prometheus Datasource│
                          │  │   • Alert Rules          │
-                         │  │   • Dashboards           │
                          │  └──────────────────────────┘
                          │
                          │  ┌──────────────────────────┐
 Clients ─────────────────┼─►│  Health API (Go)         │
 (REST API)              │  │  • /api/v1/health        │
-                         │  │  • JSON responses        │
+                         │  │  • /api/v1/metrics       │
+                         │  │  • Sends telemetry →     │
+                         │  │    Alloy :9009           │
                          │  └──────────────────────────┘
                          │
                          ──────────────────────────────────────────────
+
+**Resource Footprint:**
+- 8 pods total (vs 16+ with Mimir)
+- ~1GB RAM (vs ~3GB with Mimir)
+- 0 PVCs (vs 4-6 with Mimir)
+- ~400m CPU requests (vs ~1000m with Mimir)
 ```
 
 ## Components
@@ -196,16 +204,23 @@ Clients ─────────────────┼─►│  Health 
 - Automatic target discovery
 
 ### 3. Grafana Alloy (Enrichment Layer)
+
+**Production Mode** (when `mimir.enabled=true`):
 - **Receives metrics** from Prometheus via remote write
 - **Enriches metrics** with custom labels:
   - `cluster` - Cluster identifier (e.g., "default")
   - `environment` - Environment name (e.g., "production")
   - `source` - Set to "alloy" for tracking
   - Custom labels (team, region, etc.)
-- **Routes metrics** to either:
-  - Mimir (default) - Handles out-of-order samples
-  - Prometheus (alternative) - Federation loop
+- **Routes to Mimir** - Handles out-of-order samples
 - Adds `X-Scope-OrgID` header for Mimir multi-tenancy
+
+**Local Development Mode** (when `mimir.enabled=false`):
+- **Receives telemetry** from Health API on port 9009
+- **Enriches metrics** with custom labels
+- **Routes to Prometheus** via remote write receiver at `/api/v1/write`
+- **Prometheus does NOT write to Alloy** - prevents circular dependency
+- Lightweight: ~100m CPU, ~128Mi RAM
 
 ### 4. Grafana Mimir (Default TSDB)
 - **Multi-tenant time series database** optimized for Prometheus
@@ -231,7 +246,7 @@ Clients ─────────────────┼─►│  Health 
 - Admin credentials: admin/admin (change in production!)
 
 ### 6. Health API (Go)
-RESTful API for querying health data from Grafana alerts:
+RESTful API for querying health data from Grafana alerts and sending custom telemetry:
 
 #### Endpoints:
 - `GET /api/v1/health` - Get all health checks (from Grafana alerts)
@@ -247,6 +262,13 @@ The Health API queries Grafana's alerting API to determine the health status of 
 - **Normal alerts** → `healthy` status
 
 This provides a clean REST API that translates Grafana alert states into simple health check responses.
+
+#### Telemetry Integration:
+The Health API can send custom application metrics to Alloy for enrichment:
+- **Endpoint**: `http://my-healthchecks-alloy.monitoring.svc.cluster.local:9009/api/v1/metrics/write`
+- **Protocol**: Prometheus Remote Write
+- **Labels Added by Alloy**: cluster, environment, source
+- **Example**: API latency metrics, request counts, custom business metrics
 
 #### Example Response:
 ```json
@@ -268,7 +290,7 @@ This provides a clean REST API that translates Grafana alert states into simple 
 
 ## Configuration
 
-### values.yaml
+### Production Configuration (values.yaml)
 
 ```yaml
 # Health check targets
@@ -293,7 +315,7 @@ alloy:
 
 # Grafana Mimir - TSDB with out-of-order support
 mimir:
-  enabled: true  # Set to false to use Prometheus federation loop instead
+  enabled: true  # Set to false for local dev to save resources
 
 mimir-distributed:
   mimir:
@@ -302,21 +324,21 @@ mimir-distributed:
       limits:
         out_of_order_time_window: 10m  # Accept samples up to 10 min old
 
-      # Single replica configuration (for local dev)
+      # Production replica configuration
       ingester:
         ring:
-          replication_factor: 1  # Use 3 for production
+          replication_factor: 3  # Use 1 for local dev
 
       store_gateway:
         sharding_ring:
-          replication_factor: 1  # Use 3 for production
+          replication_factor: 3  # Use 1 for local dev
 
   # MinIO for S3-compatible storage
   minio:
     enabled: true
     resources:
       limits:
-        memory: 512Mi  # Increase for production
+        memory: 512Mi
 
 # Grafana instance with operator
 grafana:
@@ -336,6 +358,86 @@ healthApi:
   image:
     repository: your-registry/health-api
     tag: latest
+
+# Prometheus configuration
+prometheus:
+  retention: "30d"
+  scrapeInterval: 30s
+  evaluationInterval: 30s
+```
+
+### Local Development Configuration (values-local.yaml)
+
+**Optimized for KIND clusters with minimal resources:**
+
+```yaml
+# Disable resource-intensive components
+mimir:
+  enabled: false  # Saves ~2GB RAM and 4 PVCs
+
+# Enable Alloy for Health API telemetry
+alloy:
+  enabled: true
+  customLabels:
+    cluster: "healthcheck-demo"
+    environment: "development"
+  alloy:
+    configMap:
+      name: "<release-name>-is-it-up-tho-alloy-config"
+    resources:
+      limits:
+        cpu: 100m
+        memory: 128Mi
+      requests:
+        cpu: 25m
+        memory: 64Mi
+
+# Minimal Prometheus configuration
+prometheus:
+  retention: "7d"
+  scrapeInterval: 30s
+  evaluationInterval: 30s
+  resources:
+    limits:
+      cpu: 200m
+      memory: 512Mi
+    requests:
+      cpu: 50m
+      memory: 256Mi
+  # Disable Prometheus → Alloy remote write
+  # (Alloy receives from Health API only)
+  remoteWrite:
+    enabled: false
+
+# Minimal Health API resources
+healthApi:
+  replicaCount: 1
+  image:
+    repository: health-api
+    tag: latest
+    pullPolicy: Never  # Use local image for KIND
+  resources:
+    limits:
+      cpu: 100m
+      memory: 64Mi
+    requests:
+      cpu: 25m
+      memory: 32Mi
+```
+
+### Key Configuration Differences
+
+| Setting | Production | Local Development |
+|---------|-----------|------------------|
+| **Mimir** | ✅ Enabled | ❌ Disabled |
+| **Alloy** | Enriches all metrics | Receives Health API telemetry only |
+| **Prometheus** | Remote writes to Alloy | Standalone, no remote write |
+| **Prometheus RX** | Disabled (uses Mimir) | Enabled (receives from Alloy) |
+| **RAM Usage** | ~3GB | ~1GB |
+| **PVCs** | 4-6 (Mimir storage) | 0 |
+| **Pods** | 16+ | 8 |
+| **Retention** | 30 days | 7 days |
+| **API Replicas** | 2 (HA) | 1 |
 ```
 
 ## Grafana Alert Integration
@@ -508,11 +610,22 @@ kubectl get pods -n monitoring | grep mimir
 - Not critical - the remote write connection is working
 - **Solution**: Enable Mimir (`mimir.enabled: true`) which handles out-of-order samples natively
 
-**Grafana alerts not working:**
+**Grafana alerts firing incorrectly:**
 ```bash
+# Check alert status
 kubectl get grafanaalertrulegroup -n monitoring
 kubectl get grafanafolder -n monitoring
-kubectl logs -n monitoring -l app.kubernetes.io/name=grafana-operator
+
+# View Grafana logs for errors
+kubectl logs -n monitoring -l app=my-healthchecks-is-it-up-tho-grafana --tail=50
+
+# Common causes:
+# - execErrState: Alerting causes alerts to fire on query errors
+#   Solution: Changed to execErrState: OK in grafana-alerts.yaml
+# - Alert interval not divisible by scheduler interval (10s)
+#   Solution: Use 30s, 60s, etc. (not 15s)
+# - Datasource not synced yet
+#   Solution: Wait 1-2 minutes after deployment
 ```
 
 ## Project Structure
@@ -610,15 +723,19 @@ kubectl exec -n monitoring prometheus-is-it-up-tho-0 -c prometheus -- \
 ## Technical Decisions
 
 1. **Prometheus Operator CRD**: Chose CRD over standalone Prometheus for better Kubernetes integration and declarative configuration
-2. **Grafana Mimir for TSDB**: Handles out-of-order samples natively, enabling reliable metric enrichment without data loss or warnings
-3. **Grafana Operator**: Enables declarative Grafana configuration with automatic datasource and alert provisioning
-4. **Grafana Alert-Driven Health API**: Health status derived from alert states provides a single source of truth for system health
-5. **Go for API**: Lightweight, fast, with excellent Prometheus and HTTP client libraries
-6. **Alloy for Enrichment**: Grafana Alloy provides reliable metric transformation and routing with custom label injection
-7. **MinIO for Object Storage**: S3-compatible storage for Mimir blocks, simple to deploy in Kubernetes
-8. **Helm Dependencies**: Using official charts (Alloy, Mimir, Blackbox, Grafana Operator) ensures compatibility and maintainability
-9. **Multi-tenancy Ready**: X-Scope-OrgID header support enables future multi-tenant deployments
-10. **Environment-Specific Values**: Separate values files (local, dev, production) optimize resource usage per environment
+2. **Grafana Mimir for TSDB (Production)**: Handles out-of-order samples natively, enabling reliable metric enrichment without data loss or warnings
+3. **Standalone Prometheus (Local Dev)**: Lightweight alternative to Mimir for local development, saves ~2GB RAM
+4. **Grafana Operator**: Enables declarative Grafana configuration with automatic datasource and alert provisioning
+5. **Grafana Alert-Driven Health API**: Health status derived from alert states provides a single source of truth for system health
+6. **Go for API**: Lightweight, fast, with excellent Prometheus and HTTP client libraries
+7. **Alloy for Enrichment**: Grafana Alloy provides reliable metric transformation and routing with custom label injection
+8. **Alloy Telemetry Endpoint**: Health API can send custom metrics to Alloy for enrichment and routing to Prometheus
+9. **No Prometheus → Alloy Remote Write (Local)**: Prevents circular dependency and "out of order" errors in local development
+10. **MinIO for Object Storage**: S3-compatible storage for Mimir blocks, simple to deploy in Kubernetes
+11. **Helm Dependencies**: Using official charts (Alloy, Mimir, Blackbox, Grafana Operator) ensures compatibility and maintainability
+12. **Multi-tenancy Ready**: X-Scope-OrgID header support enables future multi-tenant deployments
+13. **Environment-Specific Values**: Separate values files (local, dev, production) optimize resource usage per environment
+14. **Alert execErrState: OK**: Prevents false alerts from query execution errors during datasource initialization
 
 ## Performance Considerations
 
