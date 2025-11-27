@@ -18,23 +18,34 @@ spec:
   serviceMonitorSelector:
     matchLabels:
       release: {{ .Release.Name }}
-  
+
   {{- if .Values.probe.blackbox.enabled }}
   probeSelector:
     matchLabels:
       release: {{ .Release.Name }}
   {{- end }}
-  
+
+  {{- if .Values.prometheus.resources }}
+  resources:
+{{ toYaml .Values.prometheus.resources | indent 4 }}
+  {{- else }}
   resources:
     requests:
       memory: 400Mi
-  
+  {{- end }}
+
   configMaps:
     - {{ include "common.fullname" . }}-config
 
   portName: web
 
-  {{- if .Values.alloy.enabled }}
+  {{- $remoteWriteEnabled := true }}
+  {{- if hasKey .Values.prometheus "remoteWrite" }}
+    {{- if hasKey .Values.prometheus.remoteWrite "enabled" }}
+      {{- $remoteWriteEnabled = .Values.prometheus.remoteWrite.enabled }}
+    {{- end }}
+  {{- end }}
+  {{- if and .Values.alloy.enabled $remoteWriteEnabled }}
   remoteWrite:
     - url: http://{{ .Release.Name }}-alloy.{{ include "common.namespace" . }}.svc.cluster.local:{{ .Values.alloy.remoteWritePort }}/api/v1/metrics/write
       queueConfig:

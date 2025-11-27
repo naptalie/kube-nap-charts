@@ -8,11 +8,13 @@ Lightweight, production-ready health check system combining Prometheus, Grafana 
 
 - **Prometheus Operator Integration** - Declarative Prometheus instances via CRDs
 - **Blackbox Exporter** - HTTP/HTTPS/TCP health checks
-- **Grafana Alloy** - Metric enrichment with custom labels via remote write federation
+- **Grafana Alloy** - Metric enrichment with custom labels and intelligent routing
+- **Grafana Mimir** - Time series database with out-of-order sample support
 - **Grafana Operator** - Automated Grafana instance with datasources and alerting
 - **Go REST API** - Query health status via JSON endpoints
 - **Kubernetes Native** - Uses CRDs for probe configuration
 - **Production Ready** - HA configuration, resource limits, health checks
+- **Flexible Architecture** - Toggle between Mimir (default) or Prometheus federation
 
 ## Quick Start
 
@@ -69,6 +71,68 @@ make kind-setup && make kind-deploy
 
 ## Architecture
 
+### With Mimir (Default - Handles Out-of-Order Samples)
+
+```
+External Targets          Kubernetes Cluster
+─────────────────         ──────────────────────────────────────────────────────
+                         │
+https://example.com ◄────┤  ┌─────────────────┐
+https://google.com  ◄────┼──│ Blackbox        │
+https://api.com     ◄────┤  │ Exporter        │
+                         │  └────────┬────────┘
+                         │           │
+                         │           ▼ scrape
+                         │  ┌──────────────────────────┐
+                         │  │   Prometheus             │
+                         │  │   (Operator CRD)         │
+                         │  └──────┬───────────────────┘
+                         │         │
+                         │         │ remote_write
+                         │         │ /api/v1/metrics/write
+                         │         ▼
+                         │  ┌──────────────────────────┐
+                         │  │  Grafana Alloy           │
+                         │  │  Enrichment Layer        │
+                         │  │  + Custom Labels:        │
+                         │  │    • cluster             │
+                         │  │    • environment         │
+                         │  │    • source=alloy        │
+                         │  └──────┬───────────────────┘
+                         │         │
+                         │         │ remote_write + X-Scope-OrgID: 1
+                         │         │ /api/v1/push
+                         │         ▼
+                         │  ┌──────────────────────────┐
+                         │  │   Grafana Mimir          │
+                         │  │   TSDB + Query Engine    │
+                         │  │   • Out-of-order samples │
+                         │  │   • Long-term storage    │
+                         │  │   • S3 backend (MinIO)   │
+                         │  └──────┬───────────────────┘
+                         │         │
+                         │         │ PromQL queries + X-Scope-OrgID: 1
+                         │         │ /prometheus/api/v1/query
+                         │         ▼
+                         │  ┌──────────────────────────┐
+                         │  │   Grafana                │
+                         │  │   (Operator CRD)         │
+                         │  │   • Mimir Datasource     │
+                         │  │   • Alert Rules          │
+                         │  │   • Dashboards           │
+                         │  └──────────────────────────┘
+                         │
+                         │  ┌──────────────────────────┐
+Clients ─────────────────┼─►│  Health API (Go)         │
+(REST API)              │  │  • /api/v1/health        │
+                         │  │  • JSON responses        │
+                         │  └──────────────────────────┘
+                         │
+                         ──────────────────────────────────────────────────────
+```
+
+### Without Mimir (Alternative - Federation Loop)
+
 ```
 External Targets          Kubernetes Cluster
 ─────────────────         ──────────────────────────────────────────────
@@ -103,7 +167,7 @@ https://api.com     ◄────┤  │ Exporter        │
                          │  ┌──────────────────────────┐
                          │  │   Grafana                │
                          │  │   (Operator CRD)         │
-                         │  │   • Datasources          │
+                         │  │   • Prometheus Datasource│
                          │  │   • Alert Rules          │
                          │  │   • Dashboards           │
                          │  └──────────────────────────┘
@@ -121,9 +185,9 @@ Clients ─────────────────┼─►│  Health 
 
 ### 1. Prometheus Instance
 - Managed by Prometheus Operator
-- 30-day retention (configurable)
+- 7-30 day retention (configurable per environment)
 - Remote write to Alloy via `/api/v1/metrics/write`
-- Remote write receiver enabled for federation loop
+- Remote write receiver enabled for federation loop (when Mimir disabled)
 - Service discovery via Probe CRDs
 
 ### 2. Blackbox Exporter
@@ -131,24 +195,42 @@ Clients ─────────────────┼─►│  Health 
 - Supports multiple probe modules (http_2xx, tcp_connect)
 - Automatic target discovery
 
-### 3. Grafana Alloy (Federation Layer)
+### 3. Grafana Alloy (Enrichment Layer)
 - **Receives metrics** from Prometheus via remote write
 - **Enriches metrics** with custom labels:
-  - `cluster` - Cluster identifier (e.g., "healthcheck-demo")
+  - `cluster` - Cluster identifier (e.g., "default")
   - `environment` - Environment name (e.g., "production")
   - `source` - Set to "alloy" for tracking
   - Custom labels (team, region, etc.)
-- **Writes back** enriched metrics to Prometheus
-- Acts as a federation/transformation layer
+- **Routes metrics** to either:
+  - Mimir (default) - Handles out-of-order samples
+  - Prometheus (alternative) - Federation loop
+- Adds `X-Scope-OrgID` header for Mimir multi-tenancy
 
-### 4. Grafana Instance
+### 4. Grafana Mimir (Default TSDB)
+- **Multi-tenant time series database** optimized for Prometheus
+- **Out-of-order sample support** - 10 minute window
+- **Long-term storage** - S3-compatible backend (MinIO)
+- **Horizontal scaling** - Microservices architecture:
+  - Distributor - Accepts remote write from Alloy
+  - Ingester - Stores recent samples
+  - Querier - Executes queries
+  - Query Frontend - Query caching and splitting
+  - Store Gateway - Queries long-term storage
+  - Compactor - Compacts blocks
+- **Replication factor** - Configurable (1 for local, 3 for production)
+- **Authentication** - X-Scope-OrgID header (org "1")
+
+### 5. Grafana Instance
 - Managed by Grafana Operator
-- Automatic Prometheus datasource configuration
+- Automatic datasource configuration:
+  - Mimir datasource (when `mimir.enabled=true`)
+  - Prometheus datasource (when `mimir.enabled=false`)
 - Pre-configured alert rules for probe failures
 - Alert folder organization
 - Admin credentials: admin/admin (change in production!)
 
-### 5. Health API (Go)
+### 6. Health API (Go)
 RESTful API for querying health data from Grafana alerts:
 
 #### Endpoints:
@@ -198,16 +280,43 @@ probe:
       - https://example.com
       - https://google.com
 
-# Grafana Alloy - Federation and label enrichment
+# Grafana Alloy - Enrichment and routing
 alloy:
   enabled: true
   remoteWritePort: 9009  # Port for receiving metrics from Prometheus
   customLabels:
-    cluster: "healthcheck-demo"
+    cluster: "default"
     environment: "production"
     additional:
       team: "platform"
       region: "us-west-2"
+
+# Grafana Mimir - TSDB with out-of-order support
+mimir:
+  enabled: true  # Set to false to use Prometheus federation loop instead
+
+mimir-distributed:
+  mimir:
+    structuredConfig:
+      # Out-of-order sample handling
+      limits:
+        out_of_order_time_window: 10m  # Accept samples up to 10 min old
+
+      # Single replica configuration (for local dev)
+      ingester:
+        ring:
+          replication_factor: 1  # Use 3 for production
+
+      store_gateway:
+        sharding_ring:
+          replication_factor: 1  # Use 3 for production
+
+  # MinIO for S3-compatible storage
+  minio:
+    enabled: true
+    resources:
+      limits:
+        memory: 512Mi  # Increase for production
 
 # Grafana instance with operator
 grafana:
@@ -216,11 +325,9 @@ grafana:
     name: is-it-up-tho
     adminUser: admin
     adminPassword: admin  # Change in production!
-  datasource:
-    name: prometheus
-    type: prometheus
   alerts:
     enabled: true  # Automatic alert rules for probe failures
+  # Datasource automatically configured based on mimir.enabled
 
 # Health API
 healthApi:
@@ -373,14 +480,33 @@ kubectl get configmap -n monitoring
 
 **Prometheus remote write 404 errors:**
 - Ensure Alloy is using the correct endpoint: `/api/v1/metrics/write`
-- Check Prometheus has `enableRemoteWriteReceiver: true` if using federation loop
+- Check Prometheus has `enableRemoteWriteReceiver: true` if using federation loop (Mimir disabled)
 - Verify Alloy service is accessible: `kubectl get svc -n monitoring | grep alloy`
 
-**"Out of order sample" warnings:**
-- This is expected when Prometheus scrapes directly AND receives via remote write
+**Mimir issues:**
+```bash
+# Check Mimir pods
+kubectl get pods -n monitoring | grep mimir
+
+# "too many unhealthy instances in the ring" errors:
+# - Ensure replication_factor matches number of replicas
+# - For single replica: set replication_factor: 1
+# - Check values-local.yaml for proper configuration
+
+# "no org id" / 401 Unauthorized errors:
+# - Verify X-Scope-OrgID header in Alloy config (alloy-config.yaml)
+# - Verify X-Scope-OrgID header in Grafana datasource (grafana-datasource.yaml)
+
+# MinIO OOMKilled errors:
+# - Increase MinIO memory limits in values-local.yaml
+# - Default: 512Mi for local, 128Mi may be too low
+```
+
+**"Out of order sample" warnings (when Mimir disabled):**
+- This is expected when using Prometheus federation loop
 - Samples with older timestamps than existing data are rejected
 - Not critical - the remote write connection is working
-- To eliminate: disable direct scraping and only use remote write from Alloy
+- **Solution**: Enable Mimir (`mimir.enabled: true`) which handles out-of-order samples natively
 
 **Grafana alerts not working:**
 ```bash
@@ -484,12 +610,15 @@ kubectl exec -n monitoring prometheus-is-it-up-tho-0 -c prometheus -- \
 ## Technical Decisions
 
 1. **Prometheus Operator CRD**: Chose CRD over standalone Prometheus for better Kubernetes integration and declarative configuration
-2. **Grafana Operator**: Enables declarative Grafana configuration with automatic datasource and alert provisioning
-3. **Grafana Alert-Driven Health API**: Health status derived from alert states provides a single source of truth for system health
-4. **Go for API**: Lightweight, fast, with excellent Prometheus and HTTP client libraries
-5. **Remote Write Loop**: Prometheus → Alloy → Prometheus allows metric enrichment without data loss
-6. **Helm Dependencies**: Using official charts for Alloy, Blackbox Exporter, and Grafana Operator ensures compatibility and maintainability
-7. **REST API**: Simple HTTP interface for maximum compatibility with different clients
+2. **Grafana Mimir for TSDB**: Handles out-of-order samples natively, enabling reliable metric enrichment without data loss or warnings
+3. **Grafana Operator**: Enables declarative Grafana configuration with automatic datasource and alert provisioning
+4. **Grafana Alert-Driven Health API**: Health status derived from alert states provides a single source of truth for system health
+5. **Go for API**: Lightweight, fast, with excellent Prometheus and HTTP client libraries
+6. **Alloy for Enrichment**: Grafana Alloy provides reliable metric transformation and routing with custom label injection
+7. **MinIO for Object Storage**: S3-compatible storage for Mimir blocks, simple to deploy in Kubernetes
+8. **Helm Dependencies**: Using official charts (Alloy, Mimir, Blackbox, Grafana Operator) ensures compatibility and maintainability
+9. **Multi-tenancy Ready**: X-Scope-OrgID header support enables future multi-tenant deployments
+10. **Environment-Specific Values**: Separate values files (local, dev, production) optimize resource usage per environment
 
 ## Performance Considerations
 

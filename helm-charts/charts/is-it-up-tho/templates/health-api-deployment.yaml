@@ -20,6 +20,10 @@ spec:
         app: {{ include "common.name" . }}
         component: health-api
         release: {{ .Release.Name }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "4000"
+        prometheus.io/path: "/metrics"
     spec:
       containers:
         - name: health-api
@@ -28,6 +32,9 @@ spec:
           ports:
             - name: http
               containerPort: 8080
+              protocol: TCP
+            - name: debug
+              containerPort: 4000
               protocol: TCP
           env:
             - name: PROMETHEUS_URL

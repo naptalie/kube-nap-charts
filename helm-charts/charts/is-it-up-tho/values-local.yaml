@@ -3,13 +3,30 @@
 # Minimal resource requests for kind clusters
 #################################################################
 
-# Override alloy configmap name (must match release name)
+# Disable Mimir for local development (resource intensive)
+mimir:
+  enabled: false
+
+# Override alloy configmap name (must match the ConfigMap created by alloy-config.yaml template)
+# Format: <release-name>-<chart-name>-alloy-config
 alloy:
+  enabled: true
+  customLabels:
+    cluster: "healthcheck-demo"
+    environment: "development"
   alloy:
     configMap:
       name: "my-healthchecks-is-it-up-tho-alloy-config"
+    # Minimal resources for local development
+    resources:
+      limits:
+        cpu: 100m
+        memory: 128Mi
+      requests:
+        cpu: 25m
+        memory: 64Mi
 
-# Override mimir configuration for local development
+# Mimir subchart configuration (disabled but kept for reference)
 mimir-distributed:
   # Minimal Mimir setup for local/kind clusters
   ingester:
@@ -177,6 +194,10 @@ mimir-distributed:
 # Reduce health API resources for local
 healthApi:
   replicaCount: 1
+  image:
+    repository: health-api
+    tag: latest
+    pullPolicy: Never
   resources:
     limits:
       cpu: 100m
@@ -188,3 +209,16 @@ healthApi:
 # Reduce Prometheus resources for local
 prometheus:
   retention: "7d"
+  scrapeInterval: 30s
+  evaluationInterval: 30s
+  # Minimal resources for local development
+  resources:
+    limits:
+      cpu: 200m
+      memory: 512Mi
+    requests:
+      cpu: 50m
+      memory: 256Mi
+  # Disable remote write to reduce resource usage
+  remoteWrite:
+    enabled: false
